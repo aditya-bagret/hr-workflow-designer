@@ -1,6 +1,6 @@
 # HR Workflow Designer — Tredence Case Study
 
-A production-grade visual HR Workflow Designer built with React, TypeScript, and React Flow.
+A production-grade visual HR Workflow Designer with **AI-powered analysis**, live simulation, undo/redo, auto-layout, and workflow templates.
 
 ## Quick Start
 ```bash
@@ -9,55 +9,97 @@ npm run dev
 ```
 Open http://localhost:5173
 
+---
+
+## What's Implemented
+
+### Core Requirements (All Complete)
+- ✅ React + Vite + TypeScript
+- ✅ React Flow canvas with drag-and-drop from node palette
+- ✅ 5 custom node types: Start, Task, Approval, Automated Step, End
+- ✅ Per-node configuration forms with controlled components and full type safety
+- ✅ Mock API layer (`GET /automations`, `POST /simulate` with topological sort)
+- ✅ Workflow Sandbox with step-by-step execution log
+
+### Bonus Features (All Complete)
+- ✅ **Export/Import workflow as JSON**
+- ✅ **Undo/Redo** — Ctrl+Z / Ctrl+Y, stored in Zustand history stack (60 entries)
+- ✅ **Minimap + zoom controls**
+- ✅ **Workflow validation errors visually shown on nodes** — error/warning badges on node cards
+- ✅ **Auto-layout** — Dagre.js topological tree positioning (Ctrl+L)
+- ✅ **Workflow Templates** — 3 pre-built HR workflows (Onboarding, Leave Approval, Document Verification)
+
+### Differentiator Feature
+- 🤖 **AI Workflow Assistant** — Claude-powered chat panel (top-right "AI Assistant" button). Analyzes your live workflow, suggests next nodes, flags HR compliance gaps, answers HR process questions. Receives full workflow context (all nodes + edges) on every message.
+
+---
+
 ## Architecture
+
 ```
 src/
-├── api/mockApi.ts              # Mock API (GET /automations, POST /simulate)
+├── api/
+│   └── mockApi.ts              # GET /automations + POST /simulate (topological sort + Kahn's algorithm)
 ├── components/
-│   ├── canvas/WorkflowCanvas.tsx   # React Flow canvas with DnD
-│   ├── canvas/NodePalette.tsx      # Draggable node sidebar
-│   ├── forms/NodeFormPanel.tsx     # All 5 node config forms
-│   ├── layout/AppSidebar.tsx       # Left nav (mirrors Reference 1 UI)
-│   ├── layout/TopBar.tsx           # Toolbar
-│   ├── layout/InfoPanel.tsx        # Live flow overview + validation
-│   ├── nodes/BaseNode.tsx          # Shared node shell
-│   ├── nodes/index.tsx             # 5 custom node components
-│   └── sandbox/SandboxPanel.tsx    # Simulation modal
-├── store/workflowStore.ts      # Zustand global state
-├── types/workflow.ts           # TypeScript discriminated union types
-└── App.tsx                     # Root layout
+│   ├── ai/
+│   │   └── AIAssistantPanel.tsx    # Claude API chat panel
+│   ├── canvas/
+│   │   ├── WorkflowCanvas.tsx      # React Flow with DnD, node click, pane click
+│   │   └── NodePalette.tsx         # Draggable node type sidebar
+│   ├── forms/
+│   │   └── NodeFormPanel.tsx       # All 5 config forms — dynamic, controlled, typed
+│   ├── layout/
+│   │   ├── AppSidebar.tsx          # Collapsible left nav (Reference 1 design)
+│   │   ├── TopBar.tsx              # Undo/Redo, Auto-Layout, Templates, AI, Simulate
+│   │   └── InfoPanel.tsx           # Live health score, validation checklist, node list
+│   ├── nodes/
+│   │   ├── BaseNode.tsx            # Shared shell: validation badges, simulation glow
+│   │   └── index.tsx               # StartNode, TaskNode, ApprovalNode, AutomatedNode, EndNode
+│   ├── sandbox/
+│   │   └── SandboxPanel.tsx        # Live animated simulation modal
+│   └── templates/
+│       └── TemplatesModal.tsx      # 3 HR workflow templates picker
+├── data/
+│   └── templates.ts            # Template data for 3 HR workflows
+├── hooks/
+│   ├── useAutoLayout.ts        # Dagre-based tree layout
+│   ├── useKeyboardShortcuts.ts # Ctrl+Z/Y/E/L keyboard bindings
+│   ├── useUndoRedo.ts          # Generic undo/redo utility hook
+│   └── useWorkflowValidation.ts # Cycle detection + structural validation (returns per-node errors)
+├── store/
+│   └── workflowStore.ts        # Zustand — nodes, edges, history stack, simulation IDs, UI toggles
+├── types/
+│   └── workflow.ts             # Discriminated union types for all 5 node data shapes
+└── App.tsx
 ```
 
 ## Key Design Decisions
 
-**Zustand store** — all workflow state in one place. Makes canvas/form/sidebar communication prop-drilling free, and serialization for export/import trivial.
+**Discriminated union types** — `WorkflowNodeData` is typed as a union of 5 interfaces, each `extends Record<string, unknown>` for React Flow compatibility. The form panel and validation hook switch on `data.type` — adding a new node type is a 3-step change: type → form component → switch case.
 
-**Discriminated union types** — `WorkflowNodeData` is a union of 5 typed interfaces. Form panel switches on `data.type` and renders the correct form with full TypeScript safety. Each interface `extends Record<string, unknown>` for React Flow compatibility.
+**Zustand history stack** — Undo/Redo is stored directly in the Zustand store as an array of `{nodes, edges, label}` snapshots with a pointer. Capped at 60 entries. `structuredClone` ensures snapshots are immutable.
 
-**Mock API with topological sort** — `simulateWorkflow` uses Kahn's algorithm to execute nodes in dependency order, detect cycles, and flag disconnected nodes before building the execution log.
+**useWorkflowValidation** — a pure `useMemo` hook that runs every time `nodes` or `edges` change. Returns both a flat `errors` array and a `nodeErrors` map keyed by node ID, consumed by node components to show inline badges.
 
-**Extensible form architecture** — adding a new node type = add interface to `workflow.ts` + add form component + register in switch. Zero changes to canvas/store needed.
+**Live simulation animation** — `simulatingNodeIds: string[]` in the store. The sandbox loops through steps with `setTimeout`, updating this array one node at a time. BaseNode reads this to apply a glowing border + shimmer bar.
 
-## Node Types
-| Node | Color | Key Fields |
-|------|-------|------------|
-| Start | Green | Title, metadata key-value pairs |
-| Task | Blue | Title, description, assignee, due date, custom fields |
-| Approval | Orange | Approver role dropdown, auto-approve threshold with progress bar |
-| Automated | Purple | Action picker (from mock API), dynamic param fields |
-| End | Red | Completion message, summary toggle |
+**Topological execution** — Kahn's algorithm in `mockApi.ts` processes nodes in dependency order. If the result length ≠ node count, a cycle exists and is reported as an error.
 
-## Mock API
-- `GET /automations` → 8 mock actions with param definitions
-- `POST /simulate` → topological execution with timing, status, errors, warnings
+**AI Assistant context injection** — on every message, the full workflow graph (node labels, types, assignees, action IDs, edge connections) is serialized into the system prompt so Claude always has current context.
+
+## Keyboard Shortcuts
+| Shortcut | Action |
+|---|---|
+| Ctrl+Z | Undo |
+| Ctrl+Y / Ctrl+Shift+Z | Redo |
+| Ctrl+E | Export JSON |
+| Ctrl+L | Auto-layout |
+| Delete | Delete selected node |
+| Escape | Deselect node |
 
 ## What I'd Add With More Time
-- Undo/Redo (useHistoryState wrapper around Zustand)
-- Node templates (pre-configured presets)
-- Visual validation errors directly on nodes (red border + tooltip)
-- Auto-layout via Dagre.js
-- Conditional edge labels with branching logic
-- Backend persistence (FastAPI + PostgreSQL)
-
-## Tech Stack
-React 18, TypeScript, Vite, @xyflow/react, Zustand, Tailwind CSS v3, Lucide React
+- **Node version history** — per-node changelog with diff view
+- **Conditional edges** — branch logic with labels ("If approved → X", "If rejected → Y")
+- **Backend persistence** — FastAPI + PostgreSQL with named workflow drafts
+- **Real-time collaboration** — WebSocket-based multi-user canvas editing
+- **Workflow analytics** — track simulated execution times across runs
